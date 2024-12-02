@@ -58,7 +58,8 @@ const getDefaultConfig=():tconfig => {
 
 export const getConfigFile=():tconfig => {
     const home = getHomeDir();
-    const configDir=`${home}/.pumpcontroller`;
+    const appName=process.env.NAME || '.edifly-si';
+    const configDir=`${home}/.${appName}`;
     if(!fs.existsSync(configDir)){
         fs.mkdirSync(configDir);
     }
