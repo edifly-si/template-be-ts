@@ -1,13 +1,8 @@
-import {Router} from 'express';
-import { CtrlHandler } from './utils';
+import { createAuthController } from './utils';
+import UserModel from '../model/user';
+import {decode} from '../library/signer';
 
-const rtr=Router();
-
-rtr.post('/login',(req, res)=>{
-    CtrlHandler(req, res, async(body)=>{
-        res.status(500).send('error')
-        return body;
-    })
-})
+const refToken = (aToken: string)=>aToken;
+const rtr=createAuthController(UserModel, decode, refToken, {});
 
 export default rtr;
