@@ -1,6 +1,9 @@
 import express, { json } from 'express'; 
 import { getConfigFile, getOsPlatform } from './library/config';
 import router from './router';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const {server:{bind, port},} = getConfigFile();
 const app = express();
