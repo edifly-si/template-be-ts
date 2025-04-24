@@ -39,4 +39,4 @@ let AllocPlanSch = new m.Schema({
 AllocPlanSch.index({flight_date_str:1});
 AllocPlanSch.plugin(populate);
 
-module.exports = m.model('allocation_plan',AllocPlanSch);
+module.exports = m.model('aircraft_movement',AllocPlanSch);
