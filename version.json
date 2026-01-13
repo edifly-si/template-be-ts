@@ -2,5 +2,9 @@
   {
     "version": "0.0.1",
     "description": "Initial manual version"
+  },
+  {
+    "version": "0.0.2",
+    "description": "feat: update scripts package"
   }
 ]
