@@ -65,6 +65,9 @@ yarn start
 
 Output build ada di folder `dist/`.
 
+## Endpoint
+- `GET /version` mengembalikan daftar histori versi dari `version.json` dalam bentuk array. Tambahkan entri baru di awal/akhir array saat rilis.
+
 ## Catatan
 - Static files dilayani dari `/public` (lihat `src/index.ts`).
 - Silakan modifikasi router dan controller sesuai kebutuhan aplikasi.
