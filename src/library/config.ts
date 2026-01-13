@@ -69,7 +69,9 @@ export const getConfigFile = (): tconfig => {
     const version = getEnv('VERSION', '0.0.0');
     const buildTime = getEnv('BUILD_TIME', moment().toISOString());
     const config = {
-        homePath: home, appName, database: {
+        homePath: home,
+        appName,
+        database: {
             connection
         },
         salt,
