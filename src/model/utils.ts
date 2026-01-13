@@ -1,16 +1,15 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import m, { Model } from 'mongoose';
 
-export const reqPaging = async (schema: Model<any>, page: number, perPage: number, filter:object = {}, sort:object = { _id: -1 }, projection:string = '') => {
+export const reqPaging = async (schema: Model<any>, page: number, perPage: number, filter: object = {}, sort: object = { _id: -1 }, projection: string = '') => {
     const offset = (page - 1) * perPage;
     const data = await schema.find(filter, projection, { skip: offset, limit: perPage, sort });
     const total = await schema.estimatedDocumentCount({});
     return { data, total };
 }
 
-export const createModel = (schema:Model<any>) => {
+export const createModel = (schema: Model<any>) => {
     const insert = async (body: object, uid: string) => {
-        const createdBy=new m.Types.ObjectId(uid);
+        const createdBy = new m.Types.ObjectId(uid);
         return await schema.create({ ...body, createdBy });
     }
 
@@ -23,8 +22,8 @@ export const createModel = (schema:Model<any>) => {
 }
 
 interface tquery {
-    search:string
-    page: number 
+    search: string
+    page: number
     perPage: number
 }
 

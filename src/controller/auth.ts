@@ -1,8 +1,7 @@
 import { createAuthController } from './utils';
-import UserModel from '../model/user';
-import {decode} from '../library/signer';
+import UserModel from '../model/users';
+import { decode, refreshToken } from '../library/signer';
 
-const refToken = (aToken: string)=>aToken;
-const rtr=createAuthController(UserModel, decode, refToken, {});
+const rtr = createAuthController(UserModel, decode, refreshToken, {});
 
 export default rtr;

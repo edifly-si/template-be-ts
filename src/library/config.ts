@@ -1,11 +1,11 @@
-import os from 'os';    
-import fs from 'fs';
-import {cpu} from 'systeminformation';
-import serNumb from 'serial-number';
+import os from 'os';
+import { cpu } from 'systeminformation';
 import { CreateRandomString } from './utils';
-
+import moment from 'moment';
+import dotenv from 'dotenv';
+dotenv.config();
 export interface tdatabase {
-    connection:string
+    connection: string
 }
 
 interface tserver {
@@ -19,56 +19,65 @@ interface tconfig {
     image_path: string
     salt: string
     isStaging: boolean
+    homePath: string
+    appName: string
+    podName: string
+    version: string
+    buildTime: string
+    self_station: string
 }
 
-const getHomeDir=():string=>os.homedir();
+const getHomeDir = (): string => os.homedir();
 
-export const getOsPlatform=():string=>os.platform()
-export const getCPU=async()=>{
+export const getOsPlatform = (): string => os.platform()
+export const getCPU = async () => {
     return (await cpu());
 }
-export const getSerNum = ():Promise<string>=>{
-    return new Promise((res, rej)=>{
-        serNumb((e, v)=>{
-            if(!e){
-                res(v)
-            }
-            else{
-                rej(e)
-            }
-        })
-
-    })
-}
-
-const getDefaultConfig=():tconfig => {
+const getDefaultConfig = (): tconfig => {
     return {
-        database:{
-            connection:''
+        database: {
+            connection: ''
         },
-        server:{
-            bind:'127.0.0.1',
-            port:11611
+        server: {
+            bind: '0.0.0.0',
+            port: 11611
         },
-        image_path:__dirname+'/images/',
-        salt:CreateRandomString(24),
-        isStaging:false
+        image_path: '/images/',
+        salt: CreateRandomString(24),
+        isStaging: false,
+        homePath: getHomeDir(),
+        appName: 'appname',
+        podName: CreateRandomString(6),
+        version: '0.0.0',
+        buildTime: moment().date().toString(),
+        self_station: "XXX"
     }
 }
 
-export const getConfigFile=():tconfig => {
+const getEnv = (name: string, defValue: string) => {
+    const val = process.env[name] || defValue;
+    return val;
+}
+
+export const getConfigFile = (): tconfig => {
     const home = getHomeDir();
-    const appName=process.env.NAME || '.edifly-si';
-    const configDir=`${home}/.${appName}`;
-    if(!fs.existsSync(configDir)){
-        fs.mkdirSync(configDir);
-    }
-    const configFile=`${configDir}/config.json`;
-    if(!fs.existsSync(configFile)){
-        fs.writeFileSync(configFile, '{}');
-    }
+    const appName = process.env.NAME || 'smart-pax-gateway';
     const defCfg = getDefaultConfig();
-    const json = fs.readFileSync(configFile);
-    const config = JSON.parse(json.toString());
-    return {...defCfg, ...config};
+    const connection = getEnv('DATABASE_CONNECTION', 'mongodb://localhost:27017/default');
+    const salt = getEnv('SALT', CreateRandomString(24));
+    const podName = getEnv('POD_NAME', CreateRandomString(6));
+    const version = getEnv('VERSION', '0.0.0');
+    const buildTime = getEnv('BUILD_TIME', moment().toISOString());
+    const self_station = getEnv("SELF_STATION", "ZZZ");
+    const config = {
+        homePath: home, appName, database: {
+            connection
+        },
+        salt,
+        podName,
+        self_station,
+        version,
+        buildTime
+    }
+    return { ...defCfg, ...config };
 }

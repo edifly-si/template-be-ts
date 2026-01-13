@@ -1,0 +1,104 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: template-backend
+  namespace: esi-template
+spec:
+  selector:
+    matchLabels:
+      app: template-backend
+  template:
+    metadata:
+      labels:
+        app: template-backend
+    spec:
+      imagePullSecrets:
+        - name: registry-esi
+      containers:
+        - name: template-backend
+          image: registry.com/esi-dev/template-be:latest
+          resources:
+            limits:
+              memory: "512Mi"
+              cpu: "300m"
+            requests:
+              memory: "256Mi"
+              cpu: "200m"
+          envFrom:
+            - secretRef:
+                name: template-backend-env
+          ports:
+            - containerPort: 11611
+          env:
+            - name: DATABASE_CONNECTION
+              valueFrom:
+                secretKeyRef:
+                  name: template-backend-env
+                  key: DATABASE_CONNECTION
+            - name: NAME
+              value: template-backend
+            - name: PORT
+              value: "11611"
+            - name: IP
+              value: "0.0.0.0"
+            - name: AUTHHEADER
+              valueFrom:
+                secretKeyRef:
+                  name: template-backend-env
+                  key: AUTHHEADER
+            - name: SALT
+              valueFrom:
+                secretKeyRef:
+                  name: template-backend-env
+                  key: SALT
+            - name: PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: template-backend-env
+                  key: PRIVATE_KEY
+            - name: PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: template-backend-env
+                  key: PUBLIC_KEY
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: template-backend-svc
+  namespace: esi-template
+spec:
+  selector:
+    app: template-backend
+  ports:
+    - port: 11611
+      targetPort: 11611
+  type: ClusterIP
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: template-backend-ingress
+  namespace: esi-template
+  labels:
+    name: template-backend-ingress
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  tls:
+    - hosts:
+        - template.com
+      secretName: template.com
+  rules:
+    - host: template.com
+      http:
+        paths:
+          - pathType: Prefix
+            path: /service
+            backend:
+              service:
+                name: template-backend-svc
+                port:
+                  number: 11611
