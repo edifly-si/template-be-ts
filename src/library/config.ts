@@ -24,7 +24,6 @@ interface tconfig {
     podName: string
     version: string
     buildTime: string
-    self_station: string
 }
 
 const getHomeDir = (): string => os.homedir();
@@ -49,8 +48,7 @@ const getDefaultConfig = (): tconfig => {
         appName: 'appname',
         podName: CreateRandomString(6),
         version: '0.0.0',
-        buildTime: moment().date().toString(),
-        self_station: "XXX"
+        buildTime: moment().date().toString()
     }
 }
 
@@ -68,14 +66,12 @@ export const getConfigFile = (): tconfig => {
     const podName = getEnv('POD_NAME', CreateRandomString(6));
     const version = getEnv('VERSION', '0.0.0');
     const buildTime = getEnv('BUILD_TIME', moment().toISOString());
-    const self_station = getEnv("SELF_STATION", "ZZZ");
     const config = {
         homePath: home, appName, database: {
             connection
         },
         salt,
         podName,
-        self_station,
         version,
         buildTime
     }
