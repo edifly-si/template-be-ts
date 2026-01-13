@@ -29,9 +29,11 @@ interface tconfig {
 const getHomeDir = (): string => os.homedir();
 
 export const getOsPlatform = (): string => os.platform()
+
 export const getCPU = async () => {
     return (await cpu());
 }
+
 const getDefaultConfig = (): tconfig => {
     return {
         database: {
@@ -59,7 +61,7 @@ const getEnv = (name: string, defValue: string) => {
 
 export const getConfigFile = (): tconfig => {
     const home = getHomeDir();
-    const appName = process.env.NAME || 'smart-pax-gateway';
+    const appName = process.env.NAME || 'appname';
     const defCfg = getDefaultConfig();
     const connection = getEnv('DATABASE_CONNECTION', 'mongodb://localhost:27017/default');
     const salt = getEnv('SALT', CreateRandomString(24));
