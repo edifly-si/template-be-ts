@@ -5,6 +5,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "tsc && node dist/index.js",
+    "predev": "npm run hooks:install",
     "dev": "nodemon",
     "debug": "ts-node-dev --clear src/index.ts",
     "hooks:install": "git config core.hooksPath .githooks",
