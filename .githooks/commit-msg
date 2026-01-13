@@ -1,0 +1,4 @@
+#!/bin/sh
+
+node scripts/update-version-on-commit.js "$1"
+git add version.json

@@ -66,7 +66,20 @@ yarn start
 Output build ada di folder `dist/`.
 
 ## Endpoint
-- `GET /version` mengembalikan daftar histori versi dari `version.json` dalam bentuk array. Tambahkan entri baru di awal/akhir array saat rilis.
+- `GET /version` mengembalikan daftar histori versi dari `version.json` dalam bentuk array. Setiap item berisi `version` dan `description`. Entri bisa diupdate manual atau otomatis via hook git di bawah.
+
+## Auto Update Versi dari Git Commit
+Template ini menyediakan hook git untuk menambahkan entri baru ke `version.json` setiap commit.
+
+Cara aktifkan hook:
+```bash
+yarn hooks:install
+```
+
+Perilaku hook:
+- `description` diisi dari commit message baris pertama.
+- `version` akan increment patch (contoh: `0.0.1` -> `0.0.2`).
+- Entry baru ditambahkan di akhir array `version.json`.
 
 ## Catatan
 - Static files dilayani dari `/public` (lihat `src/index.ts`).
