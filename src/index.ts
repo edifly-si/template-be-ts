@@ -14,7 +14,7 @@ const {
 const app = express();
 
 m.connect(dbConnection)
-    .then(() => console.log(`Connected to MongoDB ${dbConnection}`))
+    .then(() => console.log(`Connected to MongoDB`))
     .catch((err) => console.error("MongoDB connection error:", err));
 
 if (process.env.DEV === "true") {
