@@ -7,7 +7,6 @@ const readCommitMessage = (filePath) => {
   if (!filePath || !fs.existsSync(filePath)) {
     return "Update version";
   }
-
   const raw = fs.readFileSync(filePath, "utf8");
   const firstLine = raw.split(/\r?\n/).find((line) => line.trim().length > 0);
   return (firstLine || "Update version").trim();
@@ -45,6 +44,7 @@ const main = () => {
   const filePath = path.resolve(process.cwd(), "version.json");
 
   const history = readVersionHistory(filePath);
+
   const last = history[history.length - 1] || {};
   const version = bumpPatch(last.version || "0.0.0");
   const entry = {
