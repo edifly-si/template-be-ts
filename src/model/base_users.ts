@@ -14,6 +14,18 @@ type tCreateDefaultUser = (password: string) => Promise<any>;
 type tPaging = (page: number, perPage: number, search: string, level: number, qry: any, sort: any) => Promise<any>;
 type tUpdateLastLogin = (idUser: ObjectId) => Promise<void>;
 
+type tListUsers = (
+    page: number,
+    perPage: number,
+    search?: string,
+    search2?: string
+) => Promise<{ data: any[]; total: number; page: number; perPage: number }>;
+type tGetUserById = (id: string) => Promise<any>;
+type tUpdateUserById = (id: string, data: Record<string, unknown>) => Promise<any>;
+type tDeleteUserById = (id: string) => Promise<{ deleted: boolean; id: string; data: any }>;
+type tHashPassword = (username: string, password: string) => string;
+type tCreateFromBody = (data: Record<string, unknown>) => Promise<any>;
+
 export interface tUserIntf {
     Login: tLoginFunc;
     insert: tInsertFunc;
@@ -24,6 +36,12 @@ export interface tUserIntf {
     createDefaultUser: tCreateDefaultUser;
     paging: tPaging;
     updateLastLogin: tUpdateLastLogin;
+    list: tListUsers;
+    getById: tGetUserById;
+    updateById: tUpdateUserById;
+    deleteById: tDeleteUserById;
+    hashPassword: tHashPassword;
+    create: tCreateFromBody;
 }
 
 const DEFAULT_USERNAME = 'admin';
@@ -38,9 +56,21 @@ export default (USERSCH: Model<any>, saltName: string, signer: SignerFunction): 
         return hash.digest('hex');
     };
 
-    const stripPassword = (resp: any): Omit<any, 'password'> => {
-        const { password: _pwd, ...result } = resp;
-        return result;
+    /**
+     * Convert the input to a plain JavaScript object so Mongoose internals
+     * (`$__`, `_doc`, getters, virtuals) don't leak into API responses, and then
+     * remove the hashed password field. Accepts plain objects, Mongoose documents
+     * (with `toObject`), and lean query results.
+     */
+    const stripPassword = (resp: unknown): Record<string, unknown> => {
+        let plain: Record<string, unknown>;
+        if (resp && typeof (resp as { toObject?: () => unknown }).toObject === 'function') {
+            plain = (resp as { toObject: () => Record<string, unknown> }).toObject();
+        } else {
+            plain = { ...(resp as Record<string, unknown>) };
+        }
+        delete plain.password;
+        return plain;
     };
 
     const Login: tLoginFunc = async (username, password) => {
@@ -137,6 +167,108 @@ export default (USERSCH: Model<any>, saltName: string, signer: SignerFunction): 
         await USERSCH.findByIdAndUpdate(idUser, { lastLogin: moment().toDate() });
     };
 
+    const list: tListUsers = async (page, perPage, search, search2) => {
+        const filter: Record<string, unknown> = {};
+        if (search) {
+            const r = new RegExp(search, 'i');
+            filter.$or = [{ username: r }, { name: r }];
+        }
+        if (search2) {
+            try {
+                const parsed = JSON.parse(search2) as Record<string, string>;
+                for (const key of Object.keys(parsed)) {
+                    filter[key] = new RegExp(parsed[key], 'i');
+                }
+            } catch {
+                throw new Error('search2 must be a valid JSON string');
+            }
+        }
+        const skip = (page - 1) * perPage;
+        const [data, total] = await Promise.all([
+            USERSCH.find(filter, '-password', { skip, limit: perPage, sort: { _id: -1 } }).lean(),
+            USERSCH.countDocuments(filter),
+        ]);
+        return { data, total, page, perPage };
+    };
+
+    const getById: tGetUserById = async (id) => {
+        const data = await USERSCH.findOne({ _id: id }, '-password').lean();
+        if (!data) throw new Error(`User with id ${id} not found`);
+        return data;
+    };
+
+    const updateById: tUpdateUserById = async (id, data) => {
+        const _id = new m.Types.ObjectId(id);
+        const setFields: Record<string, unknown> = { ...data };
+        if (data.password) {
+            const username =
+                (data.username as string | undefined) ||
+                ((await USERSCH.findOne({ _id }, 'username').lean()) as { username?: string } | null)
+                    ?.username;
+            if (!username) throw new Error('username is required to hash a new password');
+            setFields.password = makeHashPassword(username, data.password as string);
+        }
+        setFields.updatedAt = new Date();
+        const updated = await USERSCH.findOneAndUpdate(
+            { _id },
+            { $set: setFields },
+            { new: true, projection: '-password' }
+        );
+        if (!updated) throw new Error(`User with id ${id} not found`);
+        return updated;
+    };
+
+    const deleteById: tDeleteUserById = async (id) => {
+        const _id = new m.Types.ObjectId(id);
+        const removed = await USERSCH.findOneAndDelete({ _id });
+        if (!removed) throw new Error(`User with id ${id} not found`);
+        const obj = removed.toObject() as Record<string, unknown>;
+        const { password: _pwd, ...safe } = obj;
+        return { deleted: true, id, data: safe };
+    };
+
+    const hashPassword: tHashPassword = makeHashPassword;
+
+    /**
+     * Create a user from a controller request body. The body is already validated by zod,
+     * so `username` and `password` are guaranteed to exist. The password is hashed using
+     * the same HMAC scheme as the legacy `insert` path, and the persisted document is
+     * returned with the password field stripped.
+     */
+    const create: tCreateFromBody = async (data) => {
+        const { username, password, ...rest } = data as {
+            username: string;
+            password: string;
+            [key: string]: unknown;
+        };
+        if (!username || !password) {
+            throw new Error('username and password are required');
+        }
+        // Pre-flight uniqueness check: the schema has a unique index on `username`,
+        // but checking first lets us surface a clean, descriptive error instead of
+        // the raw MongoDB duplicate-key (E11000) error.
+        const existing = await USERSCH.findOne({ username }).lean();
+        if (existing) {
+            throw new Error(`User with username "${username}" already exists`);
+        }
+        const hashed = makeHashPassword(username, password);
+        try {
+            const doc = await USERSCH.create({ ...rest, username, password: hashed });
+            return stripPassword(doc);
+        } catch (err: unknown) {
+            // Race-condition fallback: if another request inserted the same username
+            // between our check and the create, MongoDB will reject with E11000.
+            if (
+                err &&
+                typeof err === 'object' &&
+                (err as { code?: number }).code === 11000
+            ) {
+                throw new Error(`User with username "${username}" already exists`);
+            }
+            throw err;
+        }
+    };
+
     return {
         Login,
         insert,
@@ -147,5 +279,11 @@ export default (USERSCH: Model<any>, saltName: string, signer: SignerFunction): 
         createDefaultUser,
         paging,
         updateLastLogin,
+        list,
+        getById,
+        updateById,
+        deleteById,
+        hashPassword,
+        create,
     };
 };

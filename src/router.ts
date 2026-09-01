@@ -2,6 +2,7 @@ import { Router } from 'express';
 import moment from 'moment';
 import AuthCtrl from './controller/auth';
 import SeederCtrl from './controller/seeder';
+import { userController } from './controller/users';
 import { AuthMiddleware } from './controller/utils';
 import { decode } from './library/signer';
 import { getVersionHistory } from './library/version';
@@ -20,5 +21,6 @@ rtr.use('/auth', AuthCtrl);
 rtr.use('/seeder', SeederCtrl);
 
 rtr.use("/api/v1", AuthMiddleware(decode));
+rtr.use('/api/v1/users', userController());
 
 export default rtr;
