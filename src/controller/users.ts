@@ -16,7 +16,7 @@ import {
 import { CtrlHandler } from './utils';
 
 /** Users controller: list/getById/updateById/deleteById via GET/POST. Data via model; zod validates. */
-export const userController = (userModel: tUserIntf = UserModel): Router => {
+export const UserController = (userModel: tUserIntf = UserModel): Router => {
     const rtr = Router();
 
     /** GET / - paginated list of users. */
@@ -84,4 +84,4 @@ export const userController = (userModel: tUserIntf = UserModel): Router => {
     return rtr;
 };
 
-export default userController;
+export default UserController;

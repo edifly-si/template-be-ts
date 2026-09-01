@@ -10,14 +10,19 @@ export type ValidationTarget = 'body' | 'query' | 'params';
  */
 export const validate =
     <T>(schema: ZodSchema<T>, target: ValidationTarget = 'body') =>
-        (req: Request, _res: Response, next: NextFunction): void => {
+        (req: Request, res: Response, next: NextFunction): void => {
             const result = schema.safeParse(req[target]);
             if (!result.success) {
                 const issue = result.error as ZodError;
                 const message = issue.issues
                     .map((i) => `${i.path.join('.') || target}: ${i.message}`)
                     .join('; ');
-                next(new Error(`Validation failed - ${message}`));
+                res.json({
+                    error: 500,
+                    message: `Validation failed - ${message}`,
+                    errorName: 'ZodError',
+                    stack: { issues: issue.issues },
+                });
                 return;
             }
             // Replace the request payload with the parsed, typed value.
