@@ -1,6 +1,5 @@
-// import USRSCH from '../schema/users';
-import { createDefaultUser } from "../model/users";
+import { createDefaultUser } from '../model/users';
 
-export const createDefUser = async (password) => {
+export const createDefUser = async (password: string) => {
     return await createDefaultUser(password);
-}
+};

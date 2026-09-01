@@ -1,11 +1,11 @@
-import {Router} from 'express';
-import { CtrlHandler } from './utils';
+import { Router } from 'express';
 import { createDefUser } from '../seeder/user';
+import { CtrlHandler } from './utils';
 
-const rtr=Router();
+const rtr = Router();
 
-rtr.get('/user/:pass',(req, res)=>{
-    CtrlHandler(req, res, async(body)=>{
+rtr.get('/user/:pass', (req, res) => {
+    CtrlHandler(req, res, async () => {
         return await createDefUser(req.params.pass);
     });
 });

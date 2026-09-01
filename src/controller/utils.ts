@@ -1,11 +1,11 @@
 import { NextFunction, Request, Response, Router } from "express";
-import m, { Model } from "mongoose";
-import { createModel } from "../model/utils";
 import moment from "moment";
+import m, { Model } from "mongoose";
 import { DecodeFunction, RefreshTokenFunction } from "../library/base_signer";
 import { getConfigFile } from "../library/config";
 import { CreateRandomString, createLog } from "../library/utils";
 import { tUserIntf } from "../model/base_users";
+import { createModel } from "../model/utils";
 
 export const AuthMiddleware =
     (decode: DecodeFunction) =>
@@ -14,29 +14,29 @@ export const AuthMiddleware =
             const aToken = req.headers[authHeader] || req.query?.token || "";
             if (!aToken) {
                 res.json({ error: 403, message: "Forbidden!" });
-            } else {
-                const start = new Date().getTime();
-                res.set("before-token-timestamps", `${start}`);
-                const uData = decode(`${aToken}`);
-                if (!uData) {
-                    res.json({
-                        error: 401,
-                        message: "Auth Token Invalid or Expired!",
-                    });
-                } else {
-                    res.locals.udata = { ...uData };
-                    res.locals.token = aToken;
-                    const end = new Date().getTime();
-                    res.set("after-token-timestamps", `${end}`);
-                    res.set("token-time-ms", `${end - start}`);
-                    next();
-                }
+                return;
             }
+            const start = Date.now();
+            res.set("before-token-timestamps", `${start}`);
+            const uData = decode(`${aToken}`);
+            if (!uData) {
+                res.json({
+                    error: 401,
+                    message: "Auth Token Invalid or Expired!",
+                });
+                return;
+            }
+            res.locals.udata = { ...uData };
+            res.locals.token = aToken;
+            const end = Date.now();
+            res.set("after-token-timestamps", `${end}`);
+            res.set("token-time-ms", `${end - start}`);
+            next();
         };
 
 export const RestApiMiddleware = (
-    req: Request,
-    res: Response,
+    _req: Request,
+    _res: Response,
     next: NextFunction
 ) => {
     next();
@@ -52,16 +52,16 @@ export const CtrlHandler = async (
 ) => {
     const jres = {
         error: 0,
-        data: [],
+        data: [] as any,
         message: "",
-        stack: {},
+        stack: {} as Record<string, unknown>,
         errorName: "",
     };
-    const start = new Date().getTime();
+    const start = Date.now();
     res.set("before-exec-timestamps", `${start}`);
     try {
         jres.data = await callback(req.body);
-    } catch (error) {
+    } catch (error: any) {
         if (!httpErrorCode) {
             jres.error = 500;
             jres.message = error.message;
@@ -71,12 +71,13 @@ export const CtrlHandler = async (
         }
     }
     if (jres.data !== undefined) {
-        const end = new Date().getTime();
+        const end = Date.now();
         res.set("after-exec-timestamps", `${end}`);
         res.set("execution-time-ms", `${end - start}`);
         res.json(jres);
     }
 };
+
 type tBeforeSaveData = (
     data: object,
     level: number,
@@ -128,37 +129,39 @@ export const createCrudController = (
         beforeSaveData,
     } = crudCallback || {};
     const { insert, reqPaging, update } = createModel(schema);
+
+    const buildSearchFilter = async (
+        search: string,
+        search2: string,
+        baseFilter: object
+    ): Promise<object> => {
+        if (typeof beforeRead === "function") {
+            return await beforeRead(search, search2, baseFilter);
+        }
+        let filter: any = { ...baseFilter };
+        if (search) {
+            const r = new RegExp(search, "i");
+            const orClauses = defSearch.map((f) => ({ [f]: r }));
+            filter = { ...filter, $or: orClauses };
+        }
+        if (search2) {
+            const f = JSON.parse(search2);
+            const regexFilter: Record<string, RegExp> = {};
+            for (const key of Object.keys(f)) {
+                regexFilter[key] = new RegExp(f[key], "i");
+            }
+            filter = { ...filter, ...regexFilter };
+        }
+        return filter;
+    };
+
     rtr.get("/", (req, res) => {
-        CtrlHandler(req, res, async (body) => {
+        CtrlHandler(req, res, async () => {
             const search = req.query.search as string;
             const search2 = req.query.search2 as string;
             const page = req.query.page as string;
             const perPage = req.query.perPage as string;
-            let filter = { ...initialFilter };
-            if (!!beforeRead && typeof beforeRead === "function") {
-                filter = await beforeRead(search, search2, filter);
-            } else {
-                if (search) {
-                    const o = [];
-                    const r = new RegExp(search, "i");
-                    for (let iii = 0; iii < defSearch.length; iii++) {
-                        const f = defSearch[iii];
-                        o.push({ [f]: r });
-                    }
-                    filter = { ...filter, $or: o };
-                }
-                if (search2) {
-                    const f = JSON.parse(search2);
-                    const regexFilter = {};
-                    for (const key in f) {
-                        if (f.hasOwnProperty(key)) {
-                            regexFilter[key] = new RegExp(f[key], "i"); // "i" for case-insensitive
-                        }
-                    }
-
-                    filter = { ...filter, ...regexFilter };
-                }
-            }
+            const filter = await buildSearchFilter(search, search2, { ...initialFilter });
             return await reqPaging(
                 schema,
                 parseInt(page),
@@ -172,9 +175,9 @@ export const createCrudController = (
 
     rtr.post("/", (req, res) => {
         CtrlHandler(req, res, async (body) => {
-            const { level: lvl, _id: uid } = res.locals.udata;
+            const { _id: uid } = res.locals.udata;
             let data = body;
-            if (!!beforeSaveData && typeof beforeSaveData === "function") {
+            if (typeof beforeSaveData === "function") {
                 data = await beforeSaveData(data, level, uid, req);
             }
 
@@ -184,28 +187,26 @@ export const createCrudController = (
                     { ...data, updatedAt: new Date() },
                     _id
                 );
-                if (!!afterSave && typeof afterSave === "function") {
+                if (typeof afterSave === "function") {
                     saved = await afterSave(saved);
                 }
                 return saved;
             }
             let saved = await insert(data, uid);
-            if (!!afterSave && typeof afterSave === "function") {
+            if (typeof afterSave === "function") {
                 saved = await afterSave(saved);
             }
             return saved;
         });
     });
 
-    const cleanQry = (qry: Array<string>) => {
-        const result = {};
-        for (const key in qry) {
-            if (Object.hasOwnProperty.call(qry, key)) {
-                const v = qry[key];
-                if (key.indexOf("$") >= 0) continue;
-                if (key === "timestamp") continue;
-                result[key] = v;
-            }
+    const cleanQry = (qry: Record<string, any>) => {
+        const result: Record<string, any> = {};
+        for (const key of Object.keys(qry)) {
+            const v = qry[key];
+            if (key.indexOf("$") >= 0) continue;
+            if (key === "timestamp") continue;
+            result[key] = v;
         }
         return result;
     };
@@ -218,52 +219,39 @@ export const createCrudController = (
 
             const offset = (parseInt(page) - 1) * parseInt(perPage);
 
-            const authQry = addAuthQry
+            const authQry = typeof addAuthQry === "function"
                 ? await addAuthQry(res.locals.udata)
                 : {};
-            let filter = { ...initialFilter, ...authQry };
+            let filter: any = { ...initialFilter, ...authQry };
 
             const jsSearch = JSON.parse(search);
             const f = cleanQry(jsSearch);
-            const query = f;
-            const qry = {};
-            for (const key in query) {
-                if (Object.hasOwnProperty.call(query, key)) {
-                    const v = query[key];
-                    if (v) qry[key] = v;
-                }
+            const qry: Record<string, any> = {};
+            for (const key of Object.keys(f)) {
+                const v = f[key];
+                if (v) qry[key] = v;
             }
-            const inq = (beforeInq && (await beforeInq(qry))) || qry;
+            const inq = (typeof beforeInq === "function" && (await beforeInq(qry))) || qry;
             filter = { ...filter, ...inq };
+
+            const findOptions = {
+                limit: parseInt(perPage) || 10,
+                skip: offset,
+            };
+
             if (filter["$text"]) {
                 const iData = await schema.find(
                     filter,
                     { score: { $meta: "textScore" } },
-                    {
-                        limit: parseInt(perPage) || 10,
-                        skip: offset,
-                        sort: { score: { $meta: "textScore" } },
-                    }
+                    { ...findOptions, sort: { score: { $meta: "textScore" } } }
                 );
-                const data =
-                    (!!afterInq &&
-                        typeof afterInq === "function" &&
-                        (await afterInq(iData))) ||
-                    iData;
+                const data = (typeof afterInq === "function" && (await afterInq(iData))) || iData;
                 const total = await schema.estimatedDocumentCount(filter);
                 const subTotal = await schema.countDocuments(filter);
                 return { data, subTotal, total };
             }
-            const iData = await schema.find(filter, "", {
-                limit: parseInt(perPage) || 10,
-                skip: offset,
-                sort,
-            });
-            const data =
-                (!!afterInq &&
-                    typeof afterInq === "function" &&
-                    (await afterInq(iData))) ||
-                iData;
+            const iData = await schema.find(filter, "", { ...findOptions, sort });
+            const data = (typeof afterInq === "function" && (await afterInq(iData))) || iData;
             const total = await schema.estimatedDocumentCount(filter);
             if (JSON.stringify(filter) !== "{}") {
                 const subTotal = await schema.countDocuments(filter);
@@ -276,22 +264,13 @@ export const createCrudController = (
     rtr.get("/inquiry", (req, res) => {
         CtrlHandler(req, res, async () => {
             const search = req.query.search as string;
-            let filter = { ...initialFilter };
+            let filter: any = { ...initialFilter };
             const f = JSON.parse(search);
             const qry = f;
-            const inq =
-                (!!beforeInq &&
-                    typeof beforeInq === "function" &&
-                    (await beforeInq(qry, res.locals.udata))) ||
-                qry;
+            const inq = (typeof beforeInq === "function" && (await beforeInq(qry, res.locals.udata))) || qry;
             filter = { ...filter, ...inq };
             const data = await schema.find(filter, "", { sort });
-            return (
-                (!!afterInq &&
-                    typeof afterInq === "function" &&
-                    (await afterInq(data))) ||
-                data
-            );
+            return (typeof afterInq === "function" && (await afterInq(data))) || data;
         });
     });
 
@@ -300,12 +279,7 @@ export const createCrudController = (
             const { id } = req.params;
             const { _id: uid } = res.locals.udata;
             const data = await schema.findOne({ _id: id });
-            const resp =
-                (!!beforeDetailResponse &&
-                    typeof beforeDetailResponse === "function" &&
-                    (await beforeDetailResponse(data, false, uid))) ||
-                data;
-            return resp;
+            return (typeof beforeDetailResponse === "function" && (await beforeDetailResponse(data, false, uid))) || data;
         });
     });
 
@@ -317,12 +291,7 @@ export const createCrudController = (
             const data = await schema.find({ [field]: value }, "", {
                 sort: { _id: -1 },
             });
-            const resp =
-                (!!beforeDetailResponse &&
-                    typeof beforeDetailResponse === "function" &&
-                    (await beforeDetailResponse(data, true, uid))) ||
-                data;
-            return resp;
+            return (typeof beforeDetailResponse === "function" && (await beforeDetailResponse(data, true, uid))) || data;
         });
     });
 
@@ -333,15 +302,14 @@ export const generateUniqueName = () => {
     return `${moment().unix()}_${CreateRandomString(10)}`;
 };
 
-export const createFile = (file) => {
+export const createFile = (file: any) => {
     const { name } = file;
     const frag = name.split(".");
     const ext = frag.pop();
     const nm = frag.join(".");
     const imagePath = getConfigFile().image_path;
-    const dir = imagePath;
-    const filename = generateUniqueName() + "_" + nm + "." + ext;
-    file.mv(dir + "/" + filename);
+    const filename = `${generateUniqueName()}_${nm}.${ext}`;
+    file.mv(`${imagePath}/${filename}`);
     return filename;
 };
 
@@ -372,7 +340,7 @@ export const createReportCtrl = (
     const fields = columns.map(({ title, ...rest }) => ({ ...rest }));
     if (type === "daily") {
         rtr.get("/:first_date/:last_date", (req, res) => {
-            CtrlHandler(req, res, async (body) => {
+            CtrlHandler(req, res, async () => {
                 const { first_date, last_date } = req.params;
                 const data = await getReport(
                     schema,
@@ -386,7 +354,7 @@ export const createReportCtrl = (
         });
     } else {
         rtr.get("/:month", (req, res) => {
-            CtrlHandler(req, res, async (body) => {
+            CtrlHandler(req, res, async () => {
                 const { month } = req.params;
                 if (typeof getReport === "function") {
                     const data = await getReport(schema, req, res, month);
@@ -404,7 +372,7 @@ export const createAuthController = (
     model: tUserIntf,
     decoder: DecodeFunction,
     refreshToken: RefreshTokenFunction,
-    CaptchaCache: any
+    _CaptchaCache: any
 ) => {
     const {
         changePassword,
@@ -438,7 +406,7 @@ export const createAuthController = (
     rtr.use("/me", AuthMiddleware(decoder));
 
     rtr.get("/logout", (req, res) => {
-        CtrlHandler(req, res, async (body) => {
+        CtrlHandler(req, res, async () => {
             const { _id: user_id, username } = res.locals.udata;
             createLog(user_id, `${username} Logout`, req);
             return true;
@@ -446,13 +414,13 @@ export const createAuthController = (
     });
 
     rtr.get("/refreshToken", (req, res) => {
-        CtrlHandler(req, res, async (body) => {
+        CtrlHandler(req, res, async () => {
             return refreshToken(res.locals.token);
         });
     });
 
     rtr.get("/me", (req, res) => {
-        CtrlHandler(req, res, async (body) => {
+        CtrlHandler(req, res, async () => {
             return res.locals.udata;
         });
     });

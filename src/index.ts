@@ -1,5 +1,5 @@
 import dotenv from "dotenv";
-import express, { json } from "express";
+import express, { json, NextFunction, Request, Response } from "express";
 import m from "mongoose";
 import path from "path";
 import { getConfigFile, getOsPlatform } from "./library/config";
@@ -11,27 +11,34 @@ const {
     server: { bind, port },
     database: { connection: dbConnection },
 } = getConfigFile();
+
 const app = express();
 
 m.connect(dbConnection)
     .then(() => console.log(`Connected to MongoDB`))
     .catch((err) => console.error("MongoDB connection error:", err));
 
+const devCorsMiddleware = (
+    _req: Request,
+    res: Response,
+    next: NextFunction
+) => {
+    res.set("Access-Control-Allow-Origin", "*");
+    res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, HEAD");
+    res.set(
+        "Access-Control-Allow-Headers",
+        "Authorization, Origin, X-Requested-With, Content-Type, usefirebaseauth, srawungtoken, key-jaster, Accept, Develop-by, bb-token, User-Agent, Content-Disposition"
+    );
+    res.set("Access-Control-Expose-Headers", "*");
+    if (_req.method.toLowerCase() === "options") {
+        res.end("OKE");
+    } else {
+        next();
+    }
+};
+
 if (process.env.DEV === "true") {
-    app.use("/", (req, res, next) => {
-        res.set("Access-Control-Allow-Origin", "*");
-        res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, HEAD");
-        res.set(
-            "Access-Control-Allow-Headers",
-            "Authorization, Origin, X-Requested-With, Content-Type, usefirebaseauth, srawungtoken, key-jaster, Accept, Develop-by, bb-token, User-Agent, Content-Disposition"
-        );
-        res.set("Access-Control-Expose-Headers", "*");
-        if (req.method.toLowerCase() === "options") {
-            res.end("OKE");
-        } else {
-            next();
-        }
-    });
+    app.use("/", devCorsMiddleware);
 }
 
 app.listen(port, bind, async () => {

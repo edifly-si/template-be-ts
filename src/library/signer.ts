@@ -1,17 +1,23 @@
-import BaseSigner from './base_signer';
 import dotenv from 'dotenv';
+import BaseSigner from './base_signer';
 
 dotenv.config();
 
-const privateKeyBase64 = process.env['PRIVATE_KEY']
-const publicKeyBase64 = process.env['PUBLIC_KEY']
+const privateKeyBase64 = process.env['PRIVATE_KEY'];
+const publicKeyBase64 = process.env['PUBLIC_KEY'];
 if (!privateKeyBase64 || !publicKeyBase64) {
-    throw new Error("No Key Found");
+    throw new Error('No Key Found');
 }
+
 const privateKey = Buffer.from(privateKeyBase64, 'base64').toString('utf-8');
 const publicKey = Buffer.from(publicKeyBase64, 'base64').toString('utf-8');
-const signerOptions = { expiresIn: '8h', audience: 'HKNet', subject: 'hknet@edifly-si.sys', algorithm: 'RS256' };
+const signerOptions = {
+    expiresIn: '8h',
+    audience: 'HKNet',
+    subject: 'hknet@edifly-si.sys',
+    algorithm: 'RS256',
+} as const;
 
-const sign = BaseSigner(privateKey, publicKey, signerOptions);
+const { decode, refreshToken, signer, verifyToken } = BaseSigner(privateKey, publicKey, signerOptions);
 
-export const { decode, refreshToken, signer, verifyToken } = sign;
+export { decode, refreshToken, signer, verifyToken };
