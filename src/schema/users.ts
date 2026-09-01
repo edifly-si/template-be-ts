@@ -9,7 +9,7 @@ const sch = new m.Schema(
         level: { type: String, required: true },
         email: { type: String, default: '' },
         phone: { type: String, default: '' },
-        last_login: { type: Date },
+        lastLogin: { type: Date },
         createdBy: {
             type: m.Schema.Types.ObjectId,
             autopopulate: { select: 'username name email' },

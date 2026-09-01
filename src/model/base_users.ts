@@ -134,7 +134,7 @@ export default (USERSCH: Model<any>, saltName: string, signer: SignerFunction): 
 
     const updateLastLogin: tUpdateLastLogin = async (idUser) => {
         if (!idUser) throw new Error('Not Found User Id!');
-        await USERSCH.findByIdAndUpdate(idUser, { last_login: moment().toDate() });
+        await USERSCH.findByIdAndUpdate(idUser, { lastLogin: moment().toDate() });
     };
 
     return {

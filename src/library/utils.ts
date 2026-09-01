@@ -22,8 +22,8 @@ const parseIps = (ips: any) => {
     }
     if (!ips) return false;
     if (typeof ips === 'string') {
-        const [ip_address] = ips.split(',');
-        return ip_address;
+        const [ipAddress] = ips.split(',');
+        return ipAddress;
     }
     return ips;
 };
@@ -33,7 +33,7 @@ export const getIpAddr = (req: Request) => {
     return parseIps(headers['x-forwarded-for']) || parseIps(ips) || ip || hostname;
 };
 
-export const createLog = async (user_id: ObjectId | undefined, log: string, req: Request) => {
-    const ip_address = getIpAddr(req);
-    return await LOGSCH.create({ user_id, ip_address, log });
+export const createLog = async (userId: ObjectId | undefined, log: string, req: Request) => {
+    const ipAddress = getIpAddr(req);
+    return await LOGSCH.create({ userId, ipAddress, log });
 };

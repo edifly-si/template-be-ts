@@ -407,8 +407,8 @@ export const createAuthController = (
 
     rtr.get("/logout", (req, res) => {
         CtrlHandler(req, res, async () => {
-            const { _id: user_id, username } = res.locals.udata;
-            createLog(user_id, `${username} Logout`, req);
+            const { _id: userId, username } = res.locals.udata;
+            createLog(userId, `${username} Logout`, req);
             return true;
         });
     });
