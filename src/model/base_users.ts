@@ -38,7 +38,7 @@ export default (USERSCH: Model<any>, saltName: string, signer: SignerFunction): 
     }
     const Login: tLoginFunc = async (username: string, password: string) => {
         const hashed = makeHashPassword(username, password);
-        const uData = await USERSCH.findOne({ username, password: hashed });
+        const uData = await USERSCH.findOne({ username, password: hashed, deletedAt: null });
         if (!uData) {
             throw new Error(`User ${username} Not Found or Wrong Password!`);
         }
@@ -55,29 +55,33 @@ export default (USERSCH: Model<any>, saltName: string, signer: SignerFunction): 
         const password = makeHashPassword(username, pwd);
         const createdBy = new m.Types.ObjectId(uid);
         const resp = await USERSCH.create({ ...less, username, password, createdBy });
-        const { password: pwd2, ...result } = resp;
+        const { password: pwd2, ...result } = resp.toObject();
         return result;
     }
 
     const update: tUpdateFunc = async (data: any, id: string) => {
         const { password: pwd, username, ...less } = data;
+        const payload = { ...less };
+        delete payload._id;
+        const _idFilter = new m.Types.ObjectId(id);
+        let resp;
         if (!!pwd && pwd !== '') {
+            if (!username) throw new Error('Username is required to change the password!');
             const password = makeHashPassword(username, pwd);
-            const _id = new m.Types.ObjectId(id);
-            const resp = await USERSCH.findOneAndUpdate({ _id }, { $set: { ...less, password } });
-            const { password: pwd2, ...result } = resp._doc;
-            return result;
+            resp = await USERSCH.findOneAndUpdate({ _id: _idFilter, deletedAt: null }, { $set: { ...payload, password } }, { new: true });
+        } else {
+            resp = await USERSCH.findOneAndUpdate({ _id: _idFilter, deletedAt: null }, { $set: { ...payload } }, { new: true });
         }
-        const _id = new m.Types.ObjectId(id);
-        const resp = await USERSCH.findOneAndUpdate({ _id }, { $set: { ...less } });
-        const { password: pwd2, ...result } = resp._doc;
+        if (!resp) throw new Error('User Not Found!');
+        const { password: pwd2, ...result } = resp.toObject();
         return result;
     }
 
     const updateProfile: tUpdateFunc = async (userId: string, body: any) => {
         const { name, email, phone } = body;
-        await USERSCH.updateOne({ _id: new m.Types.ObjectId(userId) }, { $set: { name, email, phone } });
-        const usr: any = await USERSCH.findOne({ _id: new m.Types.ObjectId(userId) }, '', { lean: true });
+        await USERSCH.updateOne({ _id: new m.Types.ObjectId(userId), deletedAt: null }, { $set: { name, email, phone } });
+        const usr: any = await USERSCH.findOne({ _id: new m.Types.ObjectId(userId), deletedAt: null }, '', { lean: true });
+        if (!usr) throw new Error('User Not Found!');
         const { password, ...less } = usr;
         return signer(less);
     }
@@ -86,16 +90,16 @@ export default (USERSCH: Model<any>, saltName: string, signer: SignerFunction): 
         const hashed = makeHashPassword(username, password);
         const currPass = makeHashPassword(username, current);
 
-        const correct = await USERSCH.findOne({ username, password: currPass });
+        const correct = await USERSCH.findOne({ username, password: currPass, deletedAt: null });
         if (!correct) throw new Error('Wrong Current Password!');
-        return await USERSCH.updateOne({ username }, { $set: { password: hashed } });
+        return await USERSCH.updateOne({ username, deletedAt: null }, { $set: { password: hashed } });
     }
 
     const createUser: tCreateUserFunc = async (userData: any, createdBy?: ObjectId) => {
         const { username, password, ...etc } = userData;
         const hashed = makeHashPassword(username, password);
         const resp = await USERSCH.create({ ...etc, username, password: hashed, createdBy });
-        const { password: pswd, ...less } = resp._id;
+        const { password: pswd, ...less } = resp.toObject();
         return less;
     }
 
@@ -107,6 +111,7 @@ export default (USERSCH: Model<any>, saltName: string, signer: SignerFunction): 
 
     const paging: tPaging = async (page: number, perPage: number, search: string, level: number, qry: any, sort: any) => {
         const filter = {
+            deletedAt: null,
             level: { $lte: level },
             $or: [
                 { username: new RegExp(search, 'i') },

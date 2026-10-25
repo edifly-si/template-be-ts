@@ -10,8 +10,16 @@ import { tUserIntf } from "../model/base_users";
 export const AuthMiddleware =
     (decode: DecodeFunction) =>
         (req: Request, res: Response, next: NextFunction) => {
-            const authHeader: string = process.env.AUTHHEADER || "srawung-token";
-            const aToken = req.headers[authHeader] || req.query?.token || "";
+            const authHeader: string = (process.env.AUTHHEADER || "srawungtoken").toLowerCase();
+            const bearer = req.headers.authorization;
+            const bearerToken =
+                typeof bearer === "string" && bearer.toLowerCase().startsWith("bearer ")
+                    ? bearer.slice(7).trim()
+                    : "";
+            const aToken =
+                req.headers[authHeader] ||
+                bearerToken ||
+                (typeof req.query?.token === "string" ? req.query.token : "");
             if (!aToken) {
                 res.json({ error: 403, message: "Forbidden!" });
             } else {
@@ -33,6 +41,23 @@ export const AuthMiddleware =
                 }
             }
         };
+
+const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const toPositiveInt = (value: string, fallback: number) => {
+    const parsed = parseInt(value, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const parseJsonBody = (value: string) => {
+    if (!value) return {};
+    try {
+        const parsed = JSON.parse(value);
+        return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+        throw new Error("Invalid search parameter!");
+    }
+};
 
 export const RestApiMiddleware = (
     req: Request,
@@ -127,20 +152,22 @@ export const createCrudController = (
         beforeRead,
         beforeSaveData,
     } = crudCallback || {};
-    const { insert, reqPaging, update } = createModel(schema);
+    const { insert, reqPaging, update, remove } = createModel(schema);
+    // Soft-deleted documents are hidden automatically when the schema supports it.
+    const activeFilter = schema.schema.path("deletedAt") ? { deletedAt: null } : {};
     rtr.get("/", (req, res) => {
-        CtrlHandler(req, res, async (body) => {
+        CtrlHandler(req, res, async () => {
             const search = req.query.search as string;
             const search2 = req.query.search2 as string;
-            const page = req.query.page as string;
-            const perPage = req.query.perPage as string;
-            let filter = { ...initialFilter };
+            const page = toPositiveInt(req.query.page as string, 1);
+            const perPage = toPositiveInt(req.query.perPage as string, 10);
+            let filter: Record<string, unknown> = { ...initialFilter, ...activeFilter };
             if (!!beforeRead && typeof beforeRead === "function") {
-                filter = await beforeRead(search, search2, filter);
+                filter = (await beforeRead(search, search2, filter)) as Record<string, unknown>;
             } else {
                 if (search) {
                     const o = [];
-                    const r = new RegExp(search, "i");
+                    const r = new RegExp(escapeRegex(search), "i");
                     for (let iii = 0; iii < defSearch.length; iii++) {
                         const f = defSearch[iii];
                         o.push({ [f]: r });
@@ -148,31 +175,26 @@ export const createCrudController = (
                     filter = { ...filter, $or: o };
                 }
                 if (search2) {
-                    const f = JSON.parse(search2);
+                    const f = parseJsonBody(search2);
                     const regexFilter = {};
                     for (const key in f) {
-                        if (f.hasOwnProperty(key)) {
-                            regexFilter[key] = new RegExp(f[key], "i"); // "i" for case-insensitive
+                        if (Object.hasOwnProperty.call(f, key)) {
+                            const value = f[key];
+                            if (value === undefined || value === null || value === "") continue;
+                            regexFilter[key] = new RegExp(escapeRegex(`${value}`), "i");
                         }
                     }
 
                     filter = { ...filter, ...regexFilter };
                 }
             }
-            return await reqPaging(
-                schema,
-                parseInt(page),
-                parseInt(perPage),
-                filter,
-                sort,
-                projector
-            );
+            return await reqPaging(schema, page, perPage, filter, sort, projector);
         });
     });
 
     rtr.post("/", (req, res) => {
         CtrlHandler(req, res, async (body) => {
-            const { level: lvl, _id: uid } = res.locals.udata;
+            const { _id: uid } = res.locals.udata || {};
             let data = body;
             if (!!beforeSaveData && typeof beforeSaveData === "function") {
                 data = await beforeSaveData(data, level, uid, req);
@@ -180,10 +202,8 @@ export const createCrudController = (
 
             const { _id } = data;
             if (_id) {
-                let saved = await update(
-                    { ...data, updatedAt: new Date() },
-                    _id
-                );
+                let saved = await update(data, _id);
+                if (!saved) throw new Error("Data not found!");
                 if (!!afterSave && typeof afterSave === "function") {
                     saved = await afterSave(saved);
                 }
@@ -197,7 +217,16 @@ export const createCrudController = (
         });
     });
 
-    const cleanQry = (qry: Array<string>) => {
+    rtr.delete("/:id", (req, res) => {
+        CtrlHandler(req, res, async () => {
+            const { id } = req.params;
+            const deleted = await remove(id);
+            if (!deleted) throw new Error("Data not found!");
+            return { _id: id };
+        });
+    });
+
+    const cleanQry = (qry: Record<string, unknown>) => {
         const result = {};
         for (const key in qry) {
             if (Object.hasOwnProperty.call(qry, key)) {
@@ -213,17 +242,17 @@ export const createCrudController = (
     rtr.get("/pagination", (req, res) => {
         CtrlHandler(req, res, async () => {
             const search = req.query.search as string;
-            const page = req.query.page as string;
-            const perPage = req.query.perPage as string;
+            const page = toPositiveInt(req.query.page as string, 1);
+            const perPage = toPositiveInt(req.query.perPage as string, 10);
 
-            const offset = (parseInt(page) - 1) * parseInt(perPage);
+            const offset = (page - 1) * perPage;
 
             const authQry = addAuthQry
-                ? await addAuthQry(res.locals.udata)
+                ? await addAuthQry(res.locals.udata || {})
                 : {};
-            let filter = { ...initialFilter, ...authQry };
+            let filter: Record<string, unknown> = { ...initialFilter, ...activeFilter, ...authQry };
 
-            const jsSearch = JSON.parse(search);
+            const jsSearch = parseJsonBody(search);
             const f = cleanQry(jsSearch);
             const query = f;
             const qry = {};
@@ -240,7 +269,7 @@ export const createCrudController = (
                     filter,
                     { score: { $meta: "textScore" } },
                     {
-                        limit: parseInt(perPage) || 10,
+                        limit: perPage,
                         skip: offset,
                         sort: { score: { $meta: "textScore" } },
                     }
@@ -255,7 +284,7 @@ export const createCrudController = (
                 return { data, subTotal, total };
             }
             const iData = await schema.find(filter, "", {
-                limit: parseInt(perPage) || 10,
+                limit: perPage,
                 skip: offset,
                 sort,
             });
@@ -276,8 +305,8 @@ export const createCrudController = (
     rtr.get("/inquiry", (req, res) => {
         CtrlHandler(req, res, async () => {
             const search = req.query.search as string;
-            let filter = { ...initialFilter };
-            const f = JSON.parse(search);
+            let filter: Record<string, unknown> = { ...initialFilter, ...activeFilter };
+            const f = parseJsonBody(search);
             const qry = f;
             const inq =
                 (!!beforeInq &&
@@ -298,8 +327,8 @@ export const createCrudController = (
     rtr.get("/detail/:id", (req, res) => {
         CtrlHandler(req, res, async () => {
             const { id } = req.params;
-            const { _id: uid } = res.locals.udata;
-            const data = await schema.findOne({ _id: id });
+            const { _id: uid } = res.locals.udata || {};
+            const data = await schema.findOne({ _id: id, ...initialFilter, ...activeFilter });
             const resp =
                 (!!beforeDetailResponse &&
                     typeof beforeDetailResponse === "function" &&
@@ -312,9 +341,10 @@ export const createCrudController = (
     rtr.get("/detail/:field/:id", (req, res) => {
         CtrlHandler(req, res, async () => {
             const { id, field } = req.params;
-            const { _id: uid } = res.locals.udata;
+            const { _id: uid } = res.locals.udata || {};
+            if (!m.Types.ObjectId.isValid(id)) throw new Error("Invalid id!");
             const value = new m.Types.ObjectId(id);
-            const data = await schema.find({ [field]: value }, "", {
+            const data = await schema.find({ [field]: value, ...initialFilter, ...activeFilter }, "", {
                 sort: { _id: -1 },
             });
             const resp =

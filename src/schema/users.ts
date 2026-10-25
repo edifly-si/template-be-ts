@@ -6,9 +6,10 @@ const sch = new Schema({
     username: { type: String, required: true },
     password: { type: String, required: true },
     name: { type: String, required: true },
-    level: { type: String, required: true },
+    level: { type: Number, required: true },
     email: { type: String, default: '' },
     phone: { type: String, default: '' },
+    deletedAt: { type: Date, default: null },
     last_login: { type: Date },
     createdBy: { type: Schema.Types.ObjectId, autopopulate: { select: 'username name email' }, ref: 'user' }
 }, {

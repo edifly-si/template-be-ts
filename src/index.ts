@@ -20,7 +20,7 @@ m.connect(dbConnection)
 if (process.env.DEV === "true") {
     app.use("/", (req, res, next) => {
         res.set("Access-Control-Allow-Origin", "*");
-        res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, HEAD");
+        res.set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD");
         res.set(
             "Access-Control-Allow-Headers",
             "Authorization, Origin, X-Requested-With, Content-Type, usefirebaseauth, srawungtoken, key-jaster, Accept, Develop-by, bb-token, User-Agent, Content-Disposition"

@@ -7,6 +7,7 @@ const sch = new Schema({
     ip_address: String,
     log: String,
     createdAt: { type: Date, default: Date.now },
+    deletedAt: { type: Date, default: null },
 })
 
 sch.index({ user_id: 1 });

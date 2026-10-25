@@ -32,3 +32,13 @@
 # **/dist
 LICENSE
 README.md
+# Build context: keep the image small and secrets out
+.github
+key
+output
+templates
+dist
+.eslintcache
+.env*
+AGENTS.md
+!version.json

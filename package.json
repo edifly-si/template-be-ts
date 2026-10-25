@@ -4,15 +4,20 @@
   "main": "dist/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "tsc && node dist/index.js",
+    "build": "tsc",
+    "start": "node dist/index.js",
     "dev": "nodemon",
     "debug": "ts-node-dev --clear src/index.ts",
-    "lint": "eslint . --ext .ts"
+    "lint": "eslint . --ext .ts",
+    "code-map:check": "node .github/skills/maintain-code-map/scripts/check-code-map.mjs",
+    "context:audit": "node .github/skills/token-optimizer/scripts/audit-context.mjs",
+    "project:init": "node .github/skills/init-project/scripts/init-project.mjs",
+    "project:status": "node .github/skills/init-project/scripts/init-project.mjs --status"
   },
   "keywords": [],
   "author": "team edifly-si",
   "license": "ISC",
-  "description": "",
+  "description": "Template backend TypeScript + Express + MongoDB",
   "devDependencies": {
     "@eslint/js": "^9.14.0",
     "@types/express": "^4.17.1",

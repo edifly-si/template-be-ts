@@ -4,7 +4,7 @@
 
 module.exports =  {
     apps : [{
-      name   : "pumpcontroller",
+      name   : "template-backend",
       script : "npm",
       args   : "start",
       watch  : false,

@@ -2,7 +2,6 @@ node_modules
 dist
 .vscode
 *.pem
-package-lock.json
 yarn.lock
 env.js
 .DS_Store
@@ -12,3 +11,4 @@ firebase_key
 .env
 params.json
 bun.lockb
+.eslintcache

@@ -1,74 +1,200 @@
-# This workflow will do a clean install of node dependencies, build the source code and run tests across different versions of node
-# For more information see: https://help.github.com/actions/language-and-framework-guides/using-nodejs-with-github-actions
-
-name: Backend Builder and Deployer
+name: Template-Backend
 
 on:
+  # Template repo: "nobranch" is a placeholder so pushing never runs the pipeline.
+  # Change to the real branch (e.g. master/main) when this template becomes a project.
   push:
-    branches: [repo]
+    branches: [nobranch]
+  workflow_dispatch:
+
+# Values below are template defaults. When copying this repo for a real project,
+# change IMAGE_NAME / NAMESPACE / DEPLOYMENT to match the target.
+env:
+  REGISTRY: registry.edifly-dev.com
+  IMAGE_NAME: registry.edifly-dev.com/esi-dev/template-be
+  NAMESPACE: dev-template
+  DEPLOYMENT: template-backend
+  NODE_VERSION: "18"
 
 jobs:
+  lint:
+    name: Check Lint
+    runs-on: [amd64, k3s]
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Restore ESLint cache
+        id: eslint-cache
+        uses: actions/cache@v4
+        with:
+          path: .eslintcache
+          key: ${{ runner.os }}-eslint-${{ hashFiles('package-lock.json', 'package.json', 'eslint.config.mjs', 'src/**/*.ts') }}
+          restore-keys: |
+            ${{ runner.os }}-eslint-
+
+      - name: Show toolchain and cache state
+        run: |
+          echo "node $(node --version) -> $(command -v node)"
+          NPM_CACHE="$(npm config get cache)"
+          echo "npm $(npm --version), cache dir $NPM_CACHE"
+          echo "eslint cache hit: ${{ steps.eslint-cache.outputs.cache-hit }}"
+          du -sh "$NPM_CACHE/_cacache" 2>/dev/null || echo "npm cache is empty"
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Run ESLint
+        run: npm run lint -- --cache
+
+      - name: Verify code map
+        run: npm run code-map:check
+
+      - name: "Notify Telegram: Workflow Started"
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.CHAT_ID }}
+          TELEGRAM_MESSAGE: |
+            🚀 Workflow *${{ github.workflow }}* dimulai!
+            🔀 Branch: ${{ github.ref_name }}
+            🧑‍💻 Oleh: ${{ github.actor }}
+            📝 Message: _${{ github.event.head_commit.message }}_
+            🔗 [Lihat Progress](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+        run: bash .github/scripts/notify-telegram.sh
+
   build:
-    runs-on: [self-hosted, builder]
-
-    env:
-      DOCKER_CONTENT_TRUST: 1
-      DOCKER_CONTENT_TRUST_SERVER: https://registry.edifly-dev.com
-
-    strategy:
-      matrix:
-        node-version: [18.x]
-
+    name: Build & Push Image
+    runs-on: [self-hosted, k3s]
+    needs: lint
+    outputs:
+      short_sha: ${{ steps.vars.outputs.short_sha }}
     steps:
-      - uses: actions/checkout@v2
-        with:
-          clean: false
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
-      - run: . ./generateKey.sh && set_env.sh
-        name: Generate new Auth Key
+      - name: Get short commit SHA
+        id: vars
+        run: echo "short_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
 
-      - run: . ./set_env.sh
-        name: Set Kubeconfig path
+      - name: Log in to registry
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login "$REGISTRY" -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
-      - run: npm install
-        name: Install dependencies
+      - name: Build image
         env:
-          NODE_OPTIONS: --max_old_space_size=4096
-          CI: false
+          SHORT_SHA: ${{ steps.vars.outputs.short_sha }}
+        run: |
+          docker build \
+            --file Dockerfile \
+            --tag "$IMAGE_NAME:$SHORT_SHA" \
+            --tag "$IMAGE_NAME:latest" \
+            .
 
-      - run: npm run build
-        name: Build source code
+      - name: Push image
         env:
-          NODE_OPTIONS: --max_old_space_size=4096
-          CI: false
+          SHORT_SHA: ${{ steps.vars.outputs.short_sha }}
+        run: |
+          docker push "$IMAGE_NAME:$SHORT_SHA"
+          docker push "$IMAGE_NAME:latest"
 
-      - name: Docker Login
-        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login registry.edifly-dev.com -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+      - name: "Send Telegram notification on success"
+        if: success()
+        continue-on-error: true
         env:
-          DOCKER_BUILDKIT: 1
-          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.CHAT_ID }}
+          TELEGRAM_MESSAGE: |
+            Workflows: Build
+            ✅ Success: ${{ github.repository }}
+            🔀 Branch: ${{ github.ref_name }}
+            🧑‍💻 By: ${{ github.actor }}
+            🔖 Commit: `${{ steps.vars.outputs.short_sha }}`
+            🔗 Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash .github/scripts/notify-telegram.sh
 
-      - run: docker buildx build -t registry.edifly-dev.com/esi-one-billing/all-new-aodb:$(git rev-parse --short HEAD) --platform linux/amd64,linux/arm64 . --push --build-arg GIT_COMMIT_MSG="$(git log -1 --pretty=%B)"
-        name: Build and Push Docker image linux/amd64,linux/arm64
+      - name: "Send Telegram notification on failure"
+        if: failure()
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.CHAT_ID }}
+          TELEGRAM_MESSAGE: |
+            Workflows: Build
+            ❌ Failed: ${{ github.repository }}
+            🔀 Branch: ${{ github.ref_name }}
+            🧑‍💻 By: ${{ github.actor }}
+            🔗 Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash .github/scripts/notify-telegram.sh
 
-  deploy-cluster-padalarang:
-    runs-on: [self-hosted, cluster-padalarang-deployer]
-
+  deploy:
+    name: Deploy to K3s
+    # relies on the kubeconfig already configured on the deployer runner
+    runs-on: [self-hosted, deployer]
     needs: build
-
+    env:
+      SHORT_SHA: ${{ needs.build.outputs.short_sha }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
-        with:
-          clean: false
-      - uses: ./.github/actions/deployer
-        name: Deploy to Kubernetes backend
-        with:
-          namespace: namespace
-          service-name: service-name
-          deployment-file: ./templates/deployment.yaml.template
-          image: registry.edifly-dev.com/project/image
-          cmd: start
-          instance: "1"
-          version: $(git rev-parse --short HEAD)
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Deploy new image
+        run: |
+          IMAGE="$IMAGE_NAME:$SHORT_SHA"
+
+          kubectl -n "$NAMESPACE" set env "deployment/$DEPLOYMENT" \
+            BUILD_VERSION="$SHORT_SHA" \
+            BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+          # without an explicit container name, use the first container of the deployment
+          set_image() {
+            deployment="$1"
+            container="$2"
+            if [ -z "$container" ]; then
+              container="$(kubectl -n "$NAMESPACE" get "deployment/$deployment" \
+                -o jsonpath='{.spec.template.spec.containers[0].name}')"
+            fi
+            if [ -z "$container" ]; then
+              echo "::error::Unable to resolve a container name in deployment/$deployment"
+              return 1
+            fi
+            echo "Deploying $IMAGE to $deployment/$container"
+            kubectl -n "$NAMESPACE" set image "deployment/$deployment" "$container=$IMAGE"
+          }
+
+          set_image "$DEPLOYMENT"
+
+          kubectl -n "$NAMESPACE" rollout status "deployment/$DEPLOYMENT" --timeout=180s
+
+      - name: "Send Telegram notification on success"
+        if: success()
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.CHAT_ID }}
+          TELEGRAM_MESSAGE: |
+            Workflows: Deploy
+            ✅ Success: ${{ github.repository }}
+            🔀 Branch: ${{ github.ref_name }}
+            🧑‍💻 By: ${{ github.actor }}
+            🔖 Commit: `${{ needs.build.outputs.short_sha }}`
+            🔗 Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash .github/scripts/notify-telegram.sh
+
+      - name: "Send Telegram notification on failure"
+        if: failure()
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.CHAT_ID }}
+          TELEGRAM_MESSAGE: |
+            Workflows: Deploy
+            ❌ Failed: ${{ github.repository }}
+            🔀 Branch: ${{ github.ref_name }}
+            🧑‍💻 By: ${{ github.actor }}
+            🔗 Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash .github/scripts/notify-telegram.sh

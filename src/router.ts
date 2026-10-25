@@ -1,20 +1,25 @@
 import { Router } from 'express';
 import moment from 'moment';
 import AuthCtrl from './controller/auth';
+import AirlineCtrl from './controller/airline';
 import SeederCtrl from './controller/seeder';
+import { AuthMiddleware } from './controller/utils';
+import { decode } from './library/signer';
 import { getVersionHistory } from './library/version';
 
-const rtr = Router();
+const router = Router();
 
-rtr.get('/', (req, res) => {
+router.get('/', (req, res) => {
     res.json({ error: 0, data: moment().unix() });
 })
 
-rtr.get('/version', (req, res) => {
+router.get('/version', (req, res) => {
     res.json({ error: 0, data: getVersionHistory() });
 })
 
-rtr.use('/auth', AuthCtrl);
-rtr.use('/seeder', SeederCtrl);
+router.use('/auth', AuthCtrl);
+router.use('/seeder', SeederCtrl);
 
-export default rtr;
+router.use('/api/v1/airlines', AuthMiddleware(decode), AirlineCtrl);
+
+export default router;
