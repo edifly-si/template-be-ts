@@ -21,6 +21,12 @@
 - Budgets: `AGENTS.md` ≤ 12k chars, instructions whose `applyTo` matches every file ≤ 4k chars, `SKILL.md` ≤ 500 lines, references ≤ 24k chars, descriptions ≤ 1,024 chars, always-on total ≤ 24k chars (~6k tokens).
 - After adding or editing instructions, prompts, or skills, run the audit and keep it at `Result: OK`.
 
+## Security Audit Skill (Cloudflare, vendored)
+- [`.github/skills/security-audit/`](.github/skills/security-audit/SKILL.md) is copied unchanged from [cloudflare/security-audit-skill](https://github.com/cloudflare/security-audit-skill) (MIT, `LICENSE` sits next to `SKILL.md`). Do not hand-edit it; update by re-copying that repo's `skills/security-audit/`.
+- **Run it only on explicit command.** Nothing in this file authorizes an automatic or "helpful" security review. Act only when the user explicitly asks for a security audit, vulnerability review, or pen-test in the current message. Never start one on your own initiative — not while implementing a feature, reviewing a diff, fixing a bug, or as an unsolicited extra check. If you think an audit is warranted, say so in one sentence and wait; the user decides whether, when, and how far it runs, including mode (guidance vs full audit) and output location.
+- It activates on "security audit this codebase", "find vulnerabilities", or "pen-test". Full audit mode writes `architecture.md`, `coverage-ledger.json`, `findings.json`, `REPORT.md` outside the repo, under `~/security-audit-skill/<repo>/run-<N>`.
+- Windows caveat: `validate-findings.cjs` and `validate-coverage-ledger.cjs` hard-require `O_NOFOLLOW`/`O_NONBLOCK`, so every CLI validation fails here with "OS no-follow and nonblocking input protection is unavailable". Guidance mode works; run full audit mode on Linux/macOS. No OS-enforced sandbox exists here either, so target-controlled builds/tests must stay unexecuted and leads stay `needs_validation`.
+
 ## Project Structure and Module Organization
 - `src/index.ts`: bootstrap — dotenv, Mongo connection, CORS for `DEV=true`, static `/public`, listen on `11611`, 404 envelope.
 - `src/router.ts`: root router; mounts `/version`, `/auth`, `/seeder`, and auth-protected resource routers.
